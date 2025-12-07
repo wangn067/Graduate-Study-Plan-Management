@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>研究生学习计划管理器（单文件 HTML）</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#ffffff;--muted:#6b7280;--accent:#4f46e5;--ok:#10b981;--danger:#ef4444}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial;padding:18px;background:var(--bg);color:#111}
+    .container{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:260px 1fr 300px;gap:16px}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    h1{font-size:18px;margin:0}
+    .btn{display:inline-block;padding:6px 10px;border-radius:6px;background:var(--accent);color:#fff;border:none;cursor:pointer}
+    .btn.secondary{background:#fff;color:#111;border:1px solid #ddd}
+    .card{background:var(--card);padding:12px;border-radius:10px;box-shadow:0 1px 4px rgba(10,10,10,0.04)}
+    .plans-list{max-height:520px;overflow:auto}
+    .plan-item{padding:8px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid transparent}
+    .plan-item.active{background:#eef2ff;border-color:#e0e7ff}
+    .muted{color:var(--muted);font-size:13px}
+    .small{font-size:13px}
+    input[type=text],input[type=date],select,textarea{width:100%;padding:8px;border-radius:6px;border:1px solid #e5e7eb}
+    .tasks{max-height:520px;overflow:auto}
+    .task-row{display:flex;justify-content:space-between;align-items:flex-start;padding:8px;border-radius:8px;border:1px solid #f1f5f9;margin-bottom:8px}
+    .tag{padding:4px 6px;border-radius:6px;border:1px solid #e6e6f0;font-size:12px}
+    .progress{height:10px;background:#f1f5f9;border-radius:10px;overflow:hidden}
+    .progress > i{display:block;height:100%;background:var(--accent)}
+    .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+    .cal-day{padding:8px;border-radius:8px;text-align:center;background:#fff;border:1px solid #f3f4f6;min-height:56px}
+    .cal-day.has{background:#fff7ed;border-color:#ffedd5}
+    .controls{display:flex;gap:8px;align-items:center}
+    .flex{display:flex;gap:8px}
+    .right-actions{display:flex;flex-direction:column;gap:8px}
+    .text-xs{font-size:12px;color:var(--muted)}
+    footer{text-align:center;margin-top:12px;color:var(--muted);font-size:13px}
+    @media (max-width:980px){.container{grid-template-columns:1fr;}.plans-list,.tasks{max-height:none}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>研究生学习计划管理器（HTML 单文件）</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="exportAll" class="btn secondary">导出 JSON</button>
+      <label class="btn secondary" style="cursor:pointer"><input id="importFile" type="file" accept="application/json" style="display:none">导入 JSON</label>
+      <button id="newPlanBtn" class="btn">新建计划</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 左：计划列表 -->
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div><strong>我的计划</strong><div class="text-xs">本地存储 · 多端请导出/导入</div></div>
+        <div class="text-xs" id="planCount">0</div>
+      </div>
+
+      <div id="plans" class="plans-list"></div>
+
+      <div style="margin-top:10px" class="small muted">
+        全部任务：<span id="allTasks">0</span> · 未完成：<span id="incomplete">0</span>
+      </div>
+
+      <!-- 新建计划弹窗（最简单） -->
+      <div id="createPlan" style="display:none;margin-top:10px">
+        <input id="planNameInput" type="text" placeholder="计划名称，例如：论文/课程/实验" />
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button id="createPlanBtn" class="btn">创建</button>
+          <button id="cancelCreate" class="btn secondary">取消</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 中：任务区 -->
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div>
+          <h3 id="activePlanName">未选择计划</h3>
+          <div class="text-xs">进度：<span id="progressPercent">0</span>%</div>
+          <div style="width:220px;margin-top:6px" class="progress"><i id="progressBar" style="width:0%"></i></div>
+        </div>
+        <div class="flex">
+          <input id="searchQ" type="text" placeholder="搜索任务或备注" style="width:200px" />
+          <select id="filterStatus"><option value="all">全部</option><option value="todo">待办</option><option value="doing">进行中</option><option value="done">已完成</option></select>
+          <select id="sortBy"><option value="deadline">按截止</option><option value="priority">按优先级</option><option value="created">按新增</option></select>
+        </div>
+      </div>
+
+      <!-- 新任务表单 -->
+      <div id="taskForm" style="margin-bottom:10px;display:none;border-radius:8px;padding:8px;background:#f8fafc">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+          <input id="taskTitle" type="text" placeholder="任务标题（必填）" />
+          <input id="taskDeadline" type="date" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
+          <select id="taskPriority"><option>High</option><option selected>Medium</option><option>Low</option></select>
+          <input id="taskEst" type="text" placeholder="预计小时" />
+          <input id="taskNote" type="text" placeholder="备注（可选）" />
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button id="addTaskBtn" class="btn">添加任务</button>
+          <button id="resetTask" class="btn secondary">重置</button>
+        </div>
+      </div>
+
+      <!-- 任务列表 -->
+      <div id="taskList" class="tasks"></div>
+    </section>
+
+    <!-- 右：日历与操作 -->
+    <aside class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong>月度预览</strong>
+        <div class="text-xs" id="calYM"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button id="prevM" class="btn secondary">上月</button>
+        <button id="nextM" class="btn secondary">下月</button>
+        <button id="todayBtn" class="btn secondary">回到本月</button>
+      </div>
+      <div id="calendar" class="calendar-grid"></div>
+
+      <div style="margin-top:10px" class="right-actions">
+        <button id="downloadAllCSV" class="btn secondary">导出当前计划 CSV</button>
+        <button id="clearAll" class="btn secondary">清空全部（慎用）</button>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    提示：数据保存在浏览器 localStorage（键名：<code>grad_plans_v1</code>）。需要在不同设备使用请导出后导入。
+  </footer>
+
+  <script>
+    // 单文件逻辑：plans: [{id,name,createdAt,tasks:[{id,title,deadline,priority,estHours,note,status,createdAt}]}]
+    const KEY = 'grad_plans_v1';
+    let plans = JSON.parse(localStorage.getItem(KEY) || '[]');
+    let activePlanId = plans[0]?.id || null;
+
+    // Calendar state
+    const now = new Date();
+    let calYear = now.getFullYear(), calMonth = now.getMonth();
+
+    // DOM refs
+    const plansEl = document.getElementById('plans');
+    const planCount = document.getElementById('planCount');
+    const allTasksEl = document.getElementById('allTasks');
+    const incompleteEl = document.getElementById('incomplete');
+    const createPlanBox = document.getElementById('createPlan');
+    const planNameInput = document.getElementById('planNameInput');
+    const activePlanName = document.getElementById('activePlanName');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressBar = document.getElementById('progressBar');
+    const taskForm = document.getElementById('taskForm');
+    const taskList = document.getElementById('taskList');
+    const searchQ = document.getElementById('searchQ');
+    const filterStatus = document.getElementById('filterStatus');
+    const sortBy = document.getElementById('sortBy');
+    const calendarEl = document.getElementById('calendar');
+    const calYM = document.getElementById('calYM');
+
+    // initial bindings
+    document.getElementById('newPlanBtn').addEventListener('click', ()=>{ createPlanBox.style.display='block'; planNameInput.focus();});
+    document.getElementById('cancelCreate').addEventListener('click', ()=>{ createPlanBox.style.display='none'; planNameInput.value='';});
+    document.getElementById('createPlanBtn').addEventListener('click', ()=>{ createPlan(planNameInput.value.trim()); });
+    document.getElementById('addTaskBtn').addEventListener('click', addTask);
+    document.getElementById('resetTask').addEventListener('click', ()=>{ ['taskTitle','taskDeadline','taskPriority','taskEst','taskNote'].forEach(id=>document.getElementById(id).value=''); });
+    document.getElementById('exportAll').addEventListener('click', exportAllJSON);
+    document.getElementById('importFile').addEventListener('change', (e)=> importJSON(e.target.files[0]));
+    document.getElementById('importFile').addEventListener('click', (e)=>{ /* no-op to show label */ });
+    document.getElementById('prevM').addEventListener('click', ()=> changeMonth(-1));
+    document.getElementById('nextM').addEventListener('click', ()=> changeMonth(1));
+    document.getElementById('todayBtn').addEventListener('click', ()=> { calYear=now.getFullYear(); calMonth=now.getMonth(); renderCalendar(); });
+    document.getElementById('downloadAllCSV').addEventListener('click', ()=> { const p = getActivePlan(); if (!p) return alert('请先选择计划'); downloadCSV(p); });
+    document.getElementById('clearAll').addEventListener('click', ()=> { if(confirm('确定清空所有计划？此操作不可撤销')){ plans=[]; saveAndRender(); }});
+    searchQ.addEventListener('input', renderTaskList);
+    filterStatus.addEventListener('change', renderTaskList);
+    sortBy.addEventListener('change', renderTaskList);
+
+    function uid(){ return Math.random().toString(36).slice(2,9); }
+    function save(){ localStorage.setItem(KEY, JSON.stringify(plans)); }
+
+    function createPlan(name){ if(!name) return alert('请输入名称'); const p={id:uid(),name,createdAt:Date.now(),tasks:[]}; plans.unshift(p); activePlanId=p.id; planNameInput.value=''; createPlanBox.style.display='none'; saveAndRender(); }
+    function removePlan(id){ if(!confirm('确认删除该计划？')) return; plans = plans.filter(p=>p.id!==id); if(activePlanId===id) activePlanId = plans[0]?.id || null; saveAndRender(); }
+    function addTask(){ const title=document.getElementById('taskTitle').value.trim(); if(!title) return alert('任务标题必填'); const deadline=document.getElementById('taskDeadline').value||''; const priority=document.getElementById('taskPriority').value; const est=document.getElementById('taskEst').value; const note=document.getElementById('taskNote').value; const p=getActivePlan(); if(!p) return alert('请先选择或创建计划'); p.tasks.unshift({id:uid(),title,deadline,priority,estHours:est,note,status:'todo',createdAt:Date.now()}); ['taskTitle','taskDeadline','taskEst','taskNote'].forEach(id=>document.getElementById(id).value=''); saveAndRender(); }
+    function getActivePlan(){ return plans.find(p=>p.id===activePlanId) || null; }
+
+    function updateTask(planId,taskId,patch){ plans = plans.map(p=> p.id===planId? {...p, tasks: p.tasks.map(t=> t.id===taskId? {...t,...patch}:t)}:p); saveAndRender(); }
+    function deleteTask(planId,taskId){ if(!confirm('删除任务？')) return; plans = plans.map(p=> p.id===planId? {...p, tasks: p.tasks.filter(t=>t.id!==taskId)}:p); saveAndRender(); }
+
+    function calcProgress(tasks){ if(!tasks||tasks.length===0) return 0; const done = tasks.filter(t=>t.status==='done').length; return Math.round(done/tasks.length*100); }
+
+    function renderPlans(){ plansEl.innerHTML=''; plans.forEach(p=>{
+      const div=document.createElement('div'); div.className='plan-item'+(p.id===activePlanId?' active':'');
+      div.innerHTML = `<div style="flex:1"><div style="font-weight:600">${escapeHtml(p.name)}</div><div class="text-xs">任务：${p.tasks.length} · 进度：${calcProgress(p.tasks)}%</div></div>`;
+      div.addEventListener('click', ()=>{ activePlanId=p.id; renderTaskList(); renderPlans(); });
+      const actions=document.createElement('div'); actions.style.display='flex'; actions.style.gap='6px';
+      const csvBtn=document.createElement('button'); csvBtn.className='btn secondary'; csvBtn.textContent='CSV'; csvBtn.addEventListener('click',(e)=>{ e.stopPropagation(); downloadCSV(p); });
+      const delBtn=document.createElement('button'); delBtn.className='btn secondary'; delBtn.style.color='var(--danger)'; delBtn.textContent='删'; delBtn.addEventListener('click',(e)=>{ e.stopPropagation(); removePlan(p.id); });
+      actions.appendChild(csvBtn); actions.appendChild(delBtn);
+      div.appendChild(actions);
+      plansEl.appendChild(div);
+    });
+    planCount.textContent = plans.length;
+    allTasksEl.textContent = plans.flatMap(p=>p.tasks).length;
+    incompleteEl.textContent = plans.flatMap(p=>p.tasks).filter(t=>t.status!=='done').length;
+    }
+
+    function renderTaskList(){ const p=getActivePlan(); taskList.innerHTML=''; if(!p){ activePlanName.textContent='未选择计划'; taskForm.style.display='none'; progressPercent.textContent='0'; progressBar.style.width='0%'; return; }
+      activePlanName.textContent = p.name; taskForm.style.display='block';
+      const q = searchQ.value.trim().toLowerCase(); let tasks = [...p.tasks];
+      if(q) tasks = tasks.filter(t=> (t.title+' '+(t.note||'')).toLowerCase().includes(q));
+      if(filterStatus.value!=='all') tasks = tasks.filter(t=>t.status===filterStatus.value);
+      if(sortBy.value==='deadline') tasks.sort((a,b)=> (a.deadline||'9999-99-99').localeCompare(b.deadline||'9999-99-99'));
+      if(sortBy.value==='priority') tasks.sort((a,b)=> priorityRank(b.priority)-priorityRank(a.priority));
+      if(sortBy.value==='created') tasks.sort((a,b)=> b.createdAt - a.createdAt);
+
+      tasks.forEach(t=>{
+        const row=document.createElement('div'); row.className='task-row';
+        const left=document.createElement('div'); left.style.flex='1';
+        left.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><div style="font-weight:600;${t.status==='done'? 'text-decoration:line-through;color:#9ca3af':''}">${escapeHtml(t.title)}</div><div class="text-xs">${t.deadline? '截止 '+t.deadline: ''}</div><div class="tag">${t.priority}</div></div><div class="text-xs muted" style="margin-top:6px">${escapeHtml(t.note||'')}</div><div class="text-xs muted" style="margin-top:6px">预计: ${t.estHours||'-'} 小时 · 创建于 ${new Date(t.createdAt).toLocaleString()}</div>`;
+        const right=document.createElement('div'); right.style.display='flex'; right.style.flexDirection='column'; right.style.alignItems='flex-end'; right.style.gap='6px';
+        const btns=document.createElement('div'); btns.style.display='flex'; btns.style.gap='6px';
+        const toggle=document.createElement('button'); toggle.className='btn secondary'; toggle.textContent = t.status==='done'? '标为未完成':'标为完成'; toggle.addEventListener('click', ()=>{ updateTask(p.id,t.id,{status: t.status==='done'?'todo':'done'}); });
+        const edit=document.createElement('button'); edit.className='btn secondary'; edit.textContent='编辑'; edit.addEventListener('click', ()=>{ const newTitle = prompt('修改任务标题', t.title); if(newTitle!==null) updateTask(p.id,t.id,{title:newTitle}); });
+        const del=document.createElement('button'); del.className='btn secondary'; del.style.color='var(--danger)'; del.textContent='删除'; del.addEventListener('click', ()=> deleteTask(p.id,t.id));
+        btns.appendChild(toggle); btns.appendChild(edit); btns.appendChild(del);
+        right.appendChild(btns);
+        const statusDiv=document.createElement('div'); statusDiv.className='text-xs muted'; statusDiv.textContent='状态: '+t.status; right.appendChild(statusDiv);
+        row.appendChild(left); row.appendChild(right);
+        taskList.appendChild(row);
+      });
+      const prog = calcProgress(p.tasks); progressPercent.textContent = String(prog); progressBar.style.width = prog + '%';
+    }
+
+    function priorityRank(p){ if(p==='High') return 3; if(p==='Medium') return 2; if(p==='Low') return 1; return 0; }
+
+    function saveAndRender(){ save(); renderPlans(); renderTaskList(); renderCalendar(); }
+
+    function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // CSV & JSON export/import
+    function downloadCSV(plan){ const rows=[['Title','Deadline','Priority','EstHours','Status','Note','CreatedAt'], ...plan.tasks.map(t=>[t.title,t.deadline||'',t.priority,t.estHours||'',t.status,t.note||'',new Date(t.createdAt).toLocaleString()])]; const csv = rows.map(r=> r.map(c=> '"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n'); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download = plan.name.replace(/\s+/g,'_') + '_tasks.csv'; a.click(); URL.revokeObjectURL(url); }
+    function exportAllJSON(){ const blob=new Blob([JSON.stringify(plans,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download = 'grad_plans_backup_'+ new Date().toISOString().slice(0,10) +'.json'; a.click(); URL.revokeObjectURL(url); }
+    function importJSON(file){ if(!file) return; const reader=new FileReader(); reader.onload = e=> { try{ const data = JSON.parse(e.target.result); if(!Array.isArray(data)) return alert('结构不正确，需要 JSON 数组'); plans = data; activePlanId = plans[0]?.id || null; saveAndRender(); } catch(err){ alert('无法解析 JSON：'+err.message); } }; reader.readAsText(file); }
+
+    // Calendar render
+    function renderCalendar(){ calendarEl.innerHTML=''; calYM.textContent = calYear + ' - ' + (calMonth+1);
+      const first = new Date(calYear, calMonth, 1); const startWeekday = first.getDay(); const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+      // blank cells
+      for(let i=0;i<startWeekday;i++){ const blank=document.createElement('div'); blank.className='cal-day'; blank.innerHTML=''; calendarEl.appendChild(blank); }
+      for(let d=1; d<=daysInMonth; d++){ const cell=document.createElement('div'); const iso = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const tasksOn = plans.flatMap(p=> p.tasks.filter(t=>t.deadline===iso).map(t=>({...t, planName:p.name}))); if(tasksOn.length) cell.className='cal-day has'; else cell.className='cal-day';
+        cell.innerHTML = `<div style="font-weight:600">${d}</div><div class="text-xs muted" style="margin-top:6px">${tasksOn.slice(0,2).map(x=>escapeHtml(x.title)).join('<br>')}</div>`;
+        cell.addEventListener('click', ()=>{ if(tasksOn.length===0) alert('该日没有任务'); else alert(tasksOn.map(x=>`[${x.planName}] ${x.title}`).join('\n')); });
+        calendarEl.appendChild(cell);
+      }
+    }
+
+    function changeMonth(step){ const d=new Date(calYear, calMonth+step,1); calYear=d.getFullYear(); calMonth=d.getMonth(); renderCalendar(); }
+
+    // initial render
+    if(!plans.length){ /* create a sample plan to show structure (optional) */ }
+    renderPlans(); renderTaskList(); renderCalendar();
+
+    // load file input (custom label)
+    const importLabel = document.querySelector('label[for]');
+    const importFile = document.getElementById('importFile');
+    // connect hidden input
+    document.querySelector('label[style*="cursor: pointer"] input')?.addEventListener('change', (e)=> importJSON(e.target.files[0]));
+  </script>
+</body>
+</html>
